@@ -10,8 +10,13 @@ def getDailyData(nemo, outputsize):
   url = 'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=' + \
       nemo + '&outputsize=' + outputsize + '&apikey=FR61ESIVDJD2UGI8'
 
+  print(url)
+
   r = requests.get(url)
   dataDaily = r.json()
+
+  print(dataDaily)
+
   dailyDataDictionary  = dataDaily['Time Series (Daily)']
 
   df = pd.DataFrame.from_dict(dailyDataDictionary, orient='index')
@@ -35,6 +40,7 @@ def getIntradayData(nemo, interval):
   #TODO refactor extract method
   url = 'https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=' + \
       nemo + '&interval=' + interval + '&apikey=FR61ESIVDJD2UGI8'
+  print(url)
   r = requests.get(url)
   dataIntraday = r.json()
   dataDict = dataIntraday['Time Series (5min)']
@@ -54,14 +60,51 @@ def getIntradayData(nemo, interval):
 
   return df
 
+def getDailyDataFromMarketstack():
+  params = {
+    'access_key': '6149e9af91483588ecfb15ce01dd434d',
+    'symbols': 'FALABELLA.XSGO',
+    'sort': 'DESC',
+    'date_from': '2017-07-13',
+    'limit': '1000'
+  }
+
+  api_result = requests.get('http://api.marketstack.com/v1/eod', params)
+
+  api_response = api_result.json()
+
+  dataDict = api_response['data']
+
+  df = pd.DataFrame.from_dict(dataDict)
+  df = df.reset_index()
+
+  df = df.rename(index=str, columns={"date": "Date", "open": "Open",
+                                        "high": "High", "low": "Low", "close": "Close"})
+                                  
+  df['Date'] = pd.to_datetime(df['Date'])
+  df['Date'] = df['Date'].dt.tz_localize(None)
+
+  df = df.sort_values(by=['Date'])
+
+  df.Open = df.Open.astype(float)
+  df.Close = df.Close.astype(float)
+  df.High = df.High.astype(float)
+  df.Low = df.Low.astype(float)
+
+  print(df)
+  
+
+  return df
+
 def main(argv):
 
   nemo = "LTM.SN"
   interval = "5min"
 
-  data = getDailyData(nemo, 'compact')
-
+  #data = getDailyData(nemo, 'full')
   #data = getIntradayData(nemo, interval)
+
+  data = getDailyDataFromMarketstack()
 
   data.head()
   data.info()
@@ -77,10 +120,15 @@ def main(argv):
   data = data.rename(columns = {"Date":"ds","Close":"y"}) #renaming the columns of the dataset
   data.head(5)  
 
-  m = Prophet() # the Prophet class (model)
+  m = Prophet(changepoint_range=1) # the Prophet class (model)
+
   m.fit(data) # fit the model using all data
 
-  future = m.make_future_dataframe(periods=30) #we need to specify the number of days in future
+  changepoints = m.changepoints
+  print(changepoints)
+
+
+  future = m.make_future_dataframe(periods=5) #we need to specify the number of days in future
   prediction = m.predict(future)
 
   figure = m.plot(prediction)
